@@ -6,7 +6,7 @@
 module Size.Prim where
 
 import Control.Exception qualified as Exception
-import GHC.Exts (addIntC#, subIntC#, timesInt2#, Int(I#))
+import GHC.Exts (addIntC#, subWordC#, timesInt2#, Int(I#), Word(W#))
 
 -- | Checked int addition.
 -- Not general-purpose; expects input ints to be nonnegative.
@@ -23,11 +23,11 @@ checkedAdd !(I# x#) !(I# y#) =
 -- Not general-purpose; expects input ints to be nonnegative.
 -- (Will always raise an `Underflow`, even on `Overflow` 
 -- if two negative numbers are subtracted)
-checkedSub :: Int -> Int -> Int
+checkedSub :: Word -> Word -> Word
 {-# INLINE checkedSub #-}
-checkedSub !(I# x#) !(I# y#) =
-    case subIntC# x# y# of
-      (# r#, 0# #) -> I# r#
+checkedSub !(W# x#) !(W# y#) =
+    case subWordC# x# y# of
+      (# r#, 0# #) -> W# r#
       _ -> underflowError
 
 -- | Checked int multiplication.

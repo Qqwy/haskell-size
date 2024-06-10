@@ -217,8 +217,9 @@ checkedAdd (Size x) (Size y) = Size (Size.Prim.checkedAdd x y)
 checkedSub :: Size -> Size -> Size
 {-# INLINE checkedSub #-}
 checkedSub (Size x) (Size y) 
-  | y > x = Size.Prim.underflowError
-  | otherwise = Size (Size.Prim.checkedSub x y)
+  = Size (fromIntegral (Size.Prim.checkedSub (fromIntegral x)  (fromIntegral y)))
+  -- | x < y = Size.Prim.underflowError
+  -- | otherwise = Size (x + y)
 
 checkedMul :: Size -> Size -> Size
 {-# INLINE checkedMul #-}
