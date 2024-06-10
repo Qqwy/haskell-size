@@ -26,14 +26,18 @@ import Control.Monad (guard)
 
 import Size.Prim qualified
 
+#if defined(FORCE_CHECKED_MATH) && defined(IGNORE_CHECKED_MATH)
+#error The cabal library flags `force-checked-math` and `ignore-checked-math` cannot be enabled at the same time
+#endif
+
 -- | Represents the size of, or index/offset into, a datastructure.
 --
 -- Sizes are always unsigned (they cannot be negative).
 --
--- The maximum bound of a `Size` is the same as the maximum bound of `Int`.
+-- The maximum bound of a `Size` is the same as the maximum bound of `Int` (which as per the Haskell report is at least 2^29-1).
 -- The minimum bound of a `Size` obviously is `0`.
 --
--- In practice, on modern GHCs, the maximum bound of a `Size` is 2^63-1 on 64-bit environments and 2^31-1 on 32-bit environments.
+-- In practice, on modern GHC versions, the maximum bound of a `Size` is 2^63-1 on 64-bit environments and 2^31-1 on 32-bit environments.
 -- That is: `Size` uses the unsigned range of an `Int`.
 -- This is done to ensure that the conversion of `Size` -> `Int` is always valid, unintentional overflow will never occur.
 --
@@ -58,35 +62,16 @@ instance Read Size where
 
   readListPrec = Read.readListPrecDefault
 
--- #define DISABLE_OVERFLOW_CHECKS
-
 
 -- | `Size` does _checked arithmetic_.
 -- This means that any overflow/overflow that occurs during addition/subtraction/multiplication
 -- is raised as an `Overflow :: ArithException` (resp. `Underflow :: ArithException`).
 --
--- If the `DISABLE_OVERFLOW_CHECKS` flag is set, these checks are skipped.
+-- If the `+ignore-checked-math` flag is set, these checks are skipped.
 instance Num Size where
-    {-# INLINE (+) #-}
-#ifdef DISABLE_OVERFLOW_CHECKS
-    (Size x) + (Size y) = Size (x + y)
-#else
-    (+) = checkedAdd
-#endif
-
-    {-# INLINE (-) #-}
-#ifdef DISABLE_OVERFLOW_CHECKS
-    (Size x) - (Size y) = Size (x - y)
-#else
-    (-) = checkedSub
-#endif
-
-    {-# INLINE (*) #-}
-#ifdef DISABLE_OVERFLOW_CHECKS
-    (Size x) * (Size y) = Size (x * y)
-#else
-    (*) = checkedMul
-#endif
+    (+) = add
+    (-) = sub
+    (*) = mul
 
     {-# INLINE negate #-}
     negate = Size.Prim.underflowError
@@ -99,6 +84,47 @@ instance Num Size where
 
     {-# INLINE fromInteger #-}
     fromInteger = Size . fromInteger
+
+
+add :: Size -> Size -> Size
+{-# INLINE [1] add #-}
+#ifdef IGNORE_CHECKED_MATH
+add (Size x) (Size y) = Size (x + y)
+#else
+add = checkedAdd
+#endif
+
+sub :: Size -> Size -> Size
+{-# INLINE [1] sub #-}
+#ifdef IGNORE_CHECKED_MATH
+sub (Size x) (Size y) = Size (x - y)
+#else
+sub = checkedSub
+#endif
+
+mul :: Size -> Size -> Size
+{-# INLINE [1] mul #-}
+#ifdef IGNORE_CHECKED_MATH
+mul (Size x) (Size y) = Size (x * y)
+#else
+mul = checkedMul
+#endif
+
+
+#if !defined(FORCE_CHECKED_MATH)
+-- These rules will only trigger iff:
+-- 1) FORCE_CHECKED_MATH is _not_ set
+-- 2) The code is compiled with rewrite rules enabled, usually by using `-O1` or `-O2`.
+{-# RULES
+  "size/add"    forall x y. add x y = (\(Size a) (Size b) -> Size (a + b)) x y
+#-}
+{-# RULES
+  "size/sub"    forall x y. sub x y = (\(Size a) (Size b) -> Size (a - b)) x y
+#-}
+{-# RULES
+  "size/mul"    forall x y. mul x y = (\(Size a) (Size b) -> Size (a * b)) x y
+#-}
+#endif
 
 -- | `Size` is nonnegative, so its `minBound` is 0. Its `maxBound` is the same as the maxBound of `Int`.
 instance Bounded Size where
@@ -190,7 +216,9 @@ checkedAdd (Size x) (Size y) = Size (Size.Prim.checkedAdd x y)
 
 checkedSub :: Size -> Size -> Size
 {-# INLINE checkedSub #-}
-checkedSub (Size x) (Size y) = Size (Size.Prim.checkedSub x y)
+checkedSub (Size x) (Size y) 
+  | y > x = Size.Prim.underflowError
+  | otherwise = Size (Size.Prim.checkedSub x y)
 
 checkedMul :: Size -> Size -> Size
 {-# INLINE checkedMul #-}
