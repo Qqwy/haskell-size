@@ -26,6 +26,9 @@ source-repository head
 library
   exposed-modules:
       Size
+      Size.Unsafe
+      Size.Prim
+      Size.Internal
   other-modules:
       Paths_size
   autogen-modules:
