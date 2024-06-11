@@ -83,7 +83,16 @@ instance Num Size where
     signum _ = 1
 
     {-# INLINE fromInteger #-}
-    fromInteger = Size . fromInteger
+    fromInteger x =
+        x
+        & safeFromInteger
+        & fromMaybe raiseErr
+        where
+          {-# NOINLINE raiseErr #-}
+          raiseErr 
+            | x < 0 = Size.Prim.underflowError 
+            | otherwise = Size.Prim.overflowError
+
 
 
 add :: Size -> Size -> Size
