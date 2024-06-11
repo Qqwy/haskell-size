@@ -1,6 +1,9 @@
 {-# LANGUAGE GHC2021 #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE CPP #-}
+
+-- | This module is to be considered internal,
+-- and therefore might change even in minor PVP versions.
 module Size.Internal
   (Size(Size)
   , toInt
@@ -24,7 +27,7 @@ import Data.Maybe (fromMaybe)
 import Text.Read qualified as Read
 import Control.Monad (guard)
 
-import Size.Prim qualified
+import Size.Internal.Prim qualified
 
 #if defined(FORCE_CHECKED_MATH) && defined(IGNORE_CHECKED_MATH)
 #error The cabal library flags `force-checked-math` and `ignore-checked-math` cannot be enabled at the same time
@@ -74,7 +77,7 @@ instance Num Size where
     (*) = mul
 
     {-# INLINE negate #-}
-    negate = Size.Prim.underflowError
+    negate = Size.Internal.Prim.underflowError
 
     {-# INLINE abs #-}
     abs = id
@@ -90,8 +93,8 @@ instance Num Size where
         where
           {-# NOINLINE raiseErr #-}
           raiseErr 
-            | x < 0 = Size.Prim.underflowError 
-            | otherwise = Size.Prim.overflowError
+            | x < 0 = Size.Internal.Prim.underflowError 
+            | otherwise = Size.Internal.Prim.overflowError
 
 
 
@@ -221,15 +224,15 @@ safeFromNatural x
 
 checkedAdd :: Size -> Size -> Size
 {-# INLINE checkedAdd #-}
-checkedAdd (Size x) (Size y) = Size (Size.Prim.checkedAdd x y)
+checkedAdd (Size x) (Size y) = Size (Size.Internal.Prim.checkedAdd x y)
 
 checkedSub :: Size -> Size -> Size
 {-# INLINE checkedSub #-}
 checkedSub (Size x) (Size y) 
-  = Size (fromIntegral (Size.Prim.checkedSub (fromIntegral x)  (fromIntegral y)))
+  = Size (fromIntegral (Size.Internal.Prim.checkedSub (fromIntegral x)  (fromIntegral y)))
   -- | x < y = Size.Prim.underflowError
   -- | otherwise = Size (x + y)
 
 checkedMul :: Size -> Size -> Size
 {-# INLINE checkedMul #-}
-checkedMul (Size x) (Size y) = Size (Size.Prim.checkedMul x y)
+checkedMul (Size x) (Size y) = Size (Size.Internal.Prim.checkedMul x y)

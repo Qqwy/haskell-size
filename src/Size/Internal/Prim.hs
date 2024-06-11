@@ -3,7 +3,7 @@
 {-# LANGUAGE UnboxedTuples #-}
 -- | This module is to be considered internal,
 -- and therefore might change even in minor PVP versions.
-module Size.Prim where
+module Size.Internal.Prim where
 
 import Control.Exception qualified as Exception
 import GHC.Exts (addIntC#, subWordC#, timesInt2#, Int(I#), Word(W#))
