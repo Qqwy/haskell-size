@@ -25,10 +25,12 @@ To convert `Size` into other integral types:
 
 ## Flags
 
-By default, checks for overflow/underflow will be inserted when doing addition/subtraction/multiplication (in the functions from the `Num` typeclass) when compiling _without optimizations enabled_.
+By default, checks for overflow/underflow will be inserted when doing addition/subtraction/multiplication (in the functions from the `Num` typeclass), and bitwise operations (in the functions from the `Bits` typeclass) when compiling _without optimizations enabled_.
 When optimizations are enabled (to be precise: when rewrite rules are enabled), these checks are elided.
 
-(NOTE: In contrast to arithmetic, _converions_ from other integral types to `Size` will _always_ be checked.)
+Besides arithmetic, the underflow check when converting an `Int` to a `Size` using `toEnum` will also elided. This is done to provide a straightforward way to extend the 'checked or not based on optimization level' to your own code that does other arithmetic-y things.
+
+All other conversion functions are unaffected by optimizations or the explicit flags. They will _always_ check.
 
 This way, you can get confidence your code works correctly during development and when running your test suite,
 but do not pay for the performance overhead of the checks in production.

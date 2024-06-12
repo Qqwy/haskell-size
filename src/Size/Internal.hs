@@ -26,6 +26,10 @@ import GHC.Enum qualified as Enum
 import Data.Maybe (fromMaybe)
 import Text.Read qualified as Read
 import Control.Monad (guard)
+import qualified Text.Printf
+import Data.Ix (Ix)
+import Data.Bits (Bits(..), FiniteBits(..))
+import qualified Data.Bits
 
 import Size.Internal.Prim qualified
 
@@ -56,6 +60,8 @@ newtype Size =
   -- `Size` is just like `Int` w.r.t. to `Integral`. Division can never trigger overflow/underflow.
   deriving newtype Integral
   deriving newtype Real
+  deriving newtype Ix
+  deriving newtype Text.Printf.PrintfArg
 
 instance Read Size where
   readPrec     = do
@@ -138,6 +144,23 @@ mul = checkedMul
 #-}
 #endif
 
+instance Bits Size where
+  x .&. y = toEnum $ (fromEnum x) .&. fromEnum y
+  x .|. y = toEnum $ (fromEnum x) .|. fromEnum y
+  x `xor` y = toEnum $ fromEnum x `xor` fromEnum y
+  complement = toEnum . complement  . fromEnum
+  shift x a = toEnum $ shift (fromEnum x) a
+  rotate x a = toEnum $ rotate (fromEnum x) a
+  bit = Data.Bits.bitDefault
+  isSigned = const False
+  popCount = popCount . fromEnum
+  testBit = testBit . fromEnum
+  bitSize = finiteBitSize
+  bitSizeMaybe = bitSizeMaybe . fromEnum
+
+instance FiniteBits Size where
+  finiteBitSize = finiteBitSize . fromEnum
+
 -- | `Size` is nonnegative, so its `minBound` is 0. Its `maxBound` is the same as the maxBound of `Int`.
 instance Bounded Size where
     {-# INLINE minBound #-}
@@ -162,12 +185,31 @@ instance Enum Size where
     fromEnum = toInt
 
     {-# INLINE toEnum #-}
-    toEnum x = 
-        x 
-        & fromInt 
-        & fromMaybe raiseErr
-        where
-          raiseErr = (Enum.toEnumError "Size" x (0, maxBound @Size))
+    toEnum x = toEnumImpl x
+
+toEnumImpl :: Int -> Size
+{-# INLINE [1] toEnumImpl #-}
+#ifdef IGNORE_CHECKED_MATH
+toEnumImpl x = Size x
+#else
+toEnumImpl = checkedToEnum
+#endif
+
+checkedToEnum x = 
+  x 
+  & fromInt 
+  & fromMaybe raiseErr
+  where
+    raiseErr = (Enum.toEnumError "Size" x (0, maxBound @Size))
+#if !defined(FORCE_CHECKED_MATH)
+-- These rules will only trigger iff:
+-- 1) FORCE_CHECKED_MATH is _not_ set
+-- 2) The code is compiled with rewrite rules enabled, usually by using `-O1` or `-O2`.
+{-# RULES
+  "size/toEnum"    forall x. toEnumImpl x = Size x
+#-}
+#endif
+
 
 -- | Converts a `Size` to an `Int`.
 --
