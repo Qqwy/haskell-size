@@ -1,17 +1,13 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.36.0.
---
--- see: https://github.com/sol/hpack
-
 name:           size
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/size#readme>
-homepage:       https://github.com/githubuser/size#readme
-bug-reports:    https://github.com/githubuser/size/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2024 Author name here
+description:    Please see the README on GitHub at <https://github.com/Qqwy/haskell-size#readme>
+homepage:       https://github.com/Qqwy/haskell-size#readme
+bug-reports:    https://github.com/Qqwy/haskell-size/issues
+author:         Qqwy/Marten
+maintainer:     qqwy@gmx.com
+copyright:      2024 Qqwy/Marten
 license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple
@@ -21,16 +17,16 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/size
+  location: https://github.com/Qqwy/haskell-size
 
 library
   exposed-modules:
       Size
       Size.Unsafe
-      Size.Prim
-      Size.Internal
   other-modules:
       Paths_size
+      Size.Internal.Prim
+      Size.Internal
   autogen-modules:
       Paths_size
   hs-source-dirs:
@@ -39,18 +35,22 @@ library
   build-depends:
       base >=4.7 && <5
   default-language: Haskell2010
-  if flag(force-checked-math)
+  if flag(overflow-checks-always)
     CPP-Options: -DFORCE_CHECKED_MATH
-  if flag(ignore-checked-math)
+  if flag(overflow-checks-never)
     CPP-Options: -DIGNORE_CHECKED_MATH
 
-Flag force-checked-math
-  Description: Ensures the checks on addition/subtraction/multiplication are always enabled, even when optimizations are enabled. Mutually exclusive with `ignore-checked-math`.
+Flag overflow-checks-always
+  Description: 
+    Always enable the overflow/underflow checks on addition/subtraction/multiplication, even when building with optimizations. 
+    Mutually exclusive with `overflow-checks-never`.
   Default:     False
   Manual:      True
 
-Flag ignore-checked-math
-  Description: Ensures the checks on addition/subtraction/multiplication are always disabled, even when optimizations are disabled. Mutually exclusive with `force-checked-math`.
+Flag overflow-checks-never
+  Description:
+    Always disables the overflow/underflow checks on addition/subtraction/multiplication, even when building without optimizations.
+    Mutually exclusive with `overflow-checks-always`.
   Default:     False
   Manual:      True
 

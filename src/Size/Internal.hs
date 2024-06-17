@@ -1,6 +1,9 @@
 {-# LANGUAGE GHC2021 #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE CPP #-}
+
+-- | This module is to be considered internal,
+-- and therefore might change even in minor PVP versions.
 module Size.Internal
   (Size(Size)
   , toInt
@@ -8,14 +11,15 @@ module Size.Internal
   , toWord
   , fromWord
   , safeFromInteger
+  , fromNatural
   , toNatural
   -- , toInteger
   , safeFromNatural
   , checkedAdd
   , checkedSub
   , checkedMul
-  , Size.Prim.Overflow
-  , Size.Prim.Underflow
+  , Size.Internal.Prim.Overflow
+  , Size.Internal.Prim.Underflow
   )
 where
 
@@ -26,8 +30,12 @@ import GHC.Stack (HasCallStack)
 import Data.Maybe (fromMaybe)
 import Text.Read qualified as Read
 import Control.Monad (guard)
+import qualified Text.Printf
+import Data.Ix (Ix)
+import Data.Bits (Bits(..), FiniteBits(..))
+import qualified Data.Bits
 
-import Size.Prim qualified
+import Size.Internal.Prim qualified
 
 #if defined(FORCE_CHECKED_MATH) && defined(IGNORE_CHECKED_MATH)
 #error The cabal library flags `force-checked-math` and `ignore-checked-math` cannot be enabled at the same time
@@ -62,6 +70,8 @@ newtype Size =
   -- `Size` is just like `Int` w.r.t. to `Integral`. Division can never trigger overflow/underflow.
   deriving newtype Integral
   deriving newtype Real
+  deriving newtype Ix
+  deriving newtype Text.Printf.PrintfArg
 
 instance Read Size where
   readPrec     = do
@@ -81,7 +91,7 @@ instance Num Size where
     (*) = mul
 
     {-# INLINE negate #-}
-    negate = Size.Prim.underflowError
+    negate = Size.Internal.Prim.underflowError
 
     {-# INLINE abs #-}
     abs = id
@@ -90,7 +100,16 @@ instance Num Size where
     signum _ = 1
 
     {-# INLINE fromInteger #-}
-    fromInteger = Size . fromInteger
+    fromInteger x =
+        x
+        & safeFromInteger
+        & fromMaybe raiseErr
+        where
+          {-# NOINLINE raiseErr #-}
+          raiseErr 
+            | x < 0 = Size.Internal.Prim.underflowError 
+            | otherwise = Size.Internal.Prim.overflowError
+
 
 
 add :: Size -> Size -> Size
@@ -133,6 +152,23 @@ mul = checkedMul
 #-}
 #endif
 
+instance Bits Size where
+  x .&. y = toEnum $ (fromEnum x) .&. fromEnum y
+  x .|. y = toEnum $ (fromEnum x) .|. fromEnum y
+  x `xor` y = toEnum $ fromEnum x `xor` fromEnum y
+  complement = toEnum . complement  . fromEnum
+  shift x a = toEnum $ shift (fromEnum x) a
+  rotate x a = toEnum $ rotate (fromEnum x) a
+  bit = Data.Bits.bitDefault
+  isSigned = const False
+  popCount = popCount . fromEnum
+  testBit = testBit . fromEnum
+  bitSize = finiteBitSize
+  bitSizeMaybe = bitSizeMaybe . fromEnum
+
+instance FiniteBits Size where
+  finiteBitSize = finiteBitSize . fromEnum
+
 -- | `Size` is nonnegative, so its `minBound` is 0. 
 -- Its `maxBound` is the same as the maxBound of `Int`.
 -- (usually 2^63 on 64-bit machines or 2^31 on 32-bit machines)
@@ -150,23 +186,44 @@ instance Enum Size where
     {-# INLINE succ #-}
     succ x
       | x /= maxBound = x + 1
-      | otherwise = Size.Prim.overflowError
+      | otherwise = Size.Internal.Prim.overflowError
 
     {-# INLINE pred #-}
     pred x
       | x /= minBound = x - 1
-      | otherwise = Size.Prim.underflowError
+      | otherwise = Size.Internal.Prim.underflowError
 
     {-# INLINE fromEnum #-}
     fromEnum = toInt
 
     {-# INLINE toEnum #-}
-    toEnum x = 
-        x 
-        & fromInt 
-        & fromMaybe raiseErr
-        where
-          raiseErr = if x < 0 then Size.Prim.underflowError else Size.Prim.overflowError
+    toEnum x = toEnumImpl x
+
+toEnumImpl :: Int -> Size
+{-# INLINE [1] toEnumImpl #-}
+#ifdef IGNORE_CHECKED_MATH
+toEnumImpl x = Size x
+#else
+toEnumImpl = checkedToEnum
+#endif
+
+checkedToEnum :: Int -> Size
+checkedToEnum x = 
+  x 
+  & fromInt 
+  & fromMaybe raiseErr
+  where
+    raiseErr = if x < 0 then Size.Internal.Prim.underflowError else Size.Internal.Prim.overflowError
+
+#if !defined(FORCE_CHECKED_MATH)
+-- These rules will only trigger iff:
+-- 1) FORCE_CHECKED_MATH is _not_ set
+-- 2) The code is compiled with rewrite rules enabled, usually by using `-O1` or `-O2`.
+{-# RULES
+  "size/toEnum"    forall x. toEnumImpl x = Size x
+#-}
+#endif
+
 
 -- | Converts a `Size` to an `Int`.
 --
@@ -225,24 +282,24 @@ safeFromNatural x
   | otherwise = Just (Size (fromIntegral x))
 
 fromNatural :: HasCallStack => Natural -> Size
-fromNatural = fromMaybe Size.Prim.overflowError . safeFromNatural 
+fromNatural = fromMaybe Size.Internal.Prim.overflowError . safeFromNatural 
 
 -- | Adds two `Size`s, always checking for overflow (regardless of library or optimization flags).
 -- An `Exception.Overflow` is raised if the result is too large to fit in a `Size`.
 checkedAdd :: HasCallStack => Size -> Size -> Size
 {-# INLINE checkedAdd #-}
-checkedAdd (Size x) (Size y) = Size (Size.Prim.checkedAdd x y)
+checkedAdd (Size x) (Size y) = Size (Size.Internal.Prim.checkedAdd x y)
 
 -- | Subtracts two `Size`s, always checking for underflow (regardless of library or optimization flags).
 -- An `Exception.Underflow` is raised if the result is negative.
 checkedSub :: HasCallStack => Size -> Size -> Size
 {-# INLINE checkedSub #-}
 checkedSub (Size x) (Size y) 
-  = Size (fromIntegral (Size.Prim.checkedSub (fromIntegral x)  (fromIntegral y)))
+  = Size (fromIntegral (Size.Internal.Prim.checkedSub (fromIntegral x)  (fromIntegral y)))
 
 -- | Multiplies two `Size`s, always checking for overflow (regardless of library or optimization flags).
 -- An `Exception.Overflow` is raised if the result is too large to fit in a `Size`.
 checkedMul :: HasCallStack => Size -> Size -> Size
 {-# INLINE checkedMul #-}
-checkedMul (Size x) (Size y) = Size (Size.Prim.checkedMul x y)
+checkedMul (Size x) (Size y) = Size (Size.Internal.Prim.checkedMul x y)
 

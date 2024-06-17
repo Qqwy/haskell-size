@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -ddump-asm #-}
+-- {-# OPTIONS_GHC -ddump-asm #-}
 module Main (main) where
 
 import Size
