@@ -18,9 +18,12 @@ module Size.Internal
   , toNatural
   , fromNaturalSafe
   , fromNaturalChecked
-  , checkedAdd
-  , checkedSub
-  , checkedMul
+  , addSafe
+  , addChecked
+  , subSafe
+  , subChecked
+  , mulSafe
+  , mulChecked
   , Size.Internal.Prim.Overflow
   , Size.Internal.Prim.Underflow
   )
@@ -55,6 +58,8 @@ import Size.Internal.Prim qualified
 -- That is: `Size` uses the unsigned range of an `Int`.
 -- This is done to ensure that the conversion of `Size` -> `Int` is always valid, unintentional overflow will never occur.
 --
+-- == Conditional checks
+--
 -- In development and test environments (i.e. with optimizations disabled), overflow/underflow checking is done.
 -- When built with optimizations enabled, these checks are removed; in this environment, `Size` behaves just like a normal `Int`.
 -- To be precise:
@@ -76,6 +81,7 @@ newtype Size =
   deriving newtype Ix
   deriving newtype Text.Printf.PrintfArg
 
+-- | Just like any other unsigned integral number.
 instance Read Size where
   readPrec     = do
     x <- Read.readPrec @Int
@@ -87,7 +93,7 @@ instance Read Size where
 
 -- | `Size` does /checked arithmetic/.
 -- This means that any overflow resp. overflow that occurs during addition, subtraction or multiplication
--- is raised as an `Exception.Overflow` (resp. `Exception.Underflow`) `Exception.ArithException`.
+-- is raised as an `Overflow` (resp. `Underflow`).
 instance Num Size where
     (+) = add
     (-) = sub
@@ -113,14 +119,12 @@ instance Num Size where
             | x < 0 = Size.Internal.Prim.underflowError 
             | otherwise = Size.Internal.Prim.overflowError
 
-
-
 add :: Size -> Size -> Size
 {-# INLINE [1] add #-}
 #ifdef IGNORE_CHECKED_MATH
 add (Size x) (Size y) = Size (x + y)
 #else
-add = checkedAdd
+add = addChecked
 #endif
 
 sub :: Size -> Size -> Size
@@ -128,7 +132,7 @@ sub :: Size -> Size -> Size
 #ifdef IGNORE_CHECKED_MATH
 sub (Size x) (Size y) = Size (x - y)
 #else
-sub = checkedSub
+sub = subChecked
 #endif
 
 mul :: Size -> Size -> Size
@@ -136,7 +140,7 @@ mul :: Size -> Size -> Size
 #ifdef IGNORE_CHECKED_MATH
 mul (Size x) (Size y) = Size (x * y)
 #else
-mul = checkedMul
+mul = mulChecked
 #endif
 
 
@@ -155,6 +159,9 @@ mul = checkedMul
 #-}
 #endif
 
+-- | `Size` does /checked arithmetic/.
+-- This means that any overflow resp. overflow that occurs during bit shifting or setting
+-- is raised as an `Overflow` (resp. `Underflow`).
 instance Bits Size where
   x .&. y = toEnum $ (fromEnum x) .&. fromEnum y
   x .|. y = toEnum $ (fromEnum x) .|. fromEnum y
@@ -184,7 +191,7 @@ instance Bounded Size where
 
 -- | Conversions to and from `Int` using the `Enum` class will always do bounds checking.
 --
--- On failure, an `Exception.Overflow` resp `Exception.Underflow` `Exception.ArithException` will be raised.
+-- On failure, an `Overflow` resp `Underflow` will be raised.
 instance Enum Size where
     {-# INLINE succ #-}
     succ x
@@ -331,21 +338,37 @@ fromNaturalChecked :: HasCallStack => Natural -> Size
 fromNaturalChecked = fromMaybe Size.Internal.Prim.overflowError . fromNaturalSafe
 
 -- | Adds two `Size`s, always checking for overflow (regardless of library or optimization flags).
--- An `Exception.Overflow` is raised if the result is too large to fit in a `Size`.
-checkedAdd :: HasCallStack => Size -> Size -> Size
-{-# INLINE checkedAdd #-}
-checkedAdd (Size x) (Size y) = Size (Size.Internal.Prim.checkedAdd x y)
+-- An `Overflow` is raised if the result is too large to fit in a `Size`.
+addChecked :: HasCallStack => Size -> Size -> Size
+{-# INLINE addChecked #-}
+addChecked (Size x) (Size y) = Size (Size.Internal.Prim.addChecked x y)
+
+-- | Adds two `Size`s.
+-- `Nothing` is returned if the result is too large to fit in a `Size`.
+addSafe :: Size -> Size -> Maybe Size
+addSafe (Size x) (Size y) = Size <$> Size.Internal.Prim.addSafe x y
 
 -- | Subtracts two `Size`s, always checking for underflow (regardless of library or optimization flags).
--- An `Exception.Underflow` is raised if the result is negative.
-checkedSub :: HasCallStack => Size -> Size -> Size
-{-# INLINE checkedSub #-}
-checkedSub (Size x) (Size y) 
-  = Size (fromIntegral (Size.Internal.Prim.checkedSub (fromIntegral x)  (fromIntegral y)))
+-- An `Underflow` is raised if the result is negative.
+subChecked :: HasCallStack => Size -> Size -> Size
+{-# INLINE subChecked #-}
+subChecked (Size x) (Size y) 
+  = Size (fromIntegral (Size.Internal.Prim.subChecked (fromIntegral x)  (fromIntegral y)))
+
+-- | Subtracts two `Size`s.
+-- `Nothing` is returned if the result is negative.
+subSafe :: Size -> Size -> Maybe Size
+subSafe x y = do
+  res <- Size.Internal.Prim.subSafe (toWord x) (toWord y)
+  fromWordSafe res
 
 -- | Multiplies two `Size`s, always checking for overflow (regardless of library or optimization flags).
--- An `Exception.Overflow` is raised if the result is too large to fit in a `Size`.
-checkedMul :: HasCallStack => Size -> Size -> Size
-{-# INLINE checkedMul #-}
-checkedMul (Size x) (Size y) = Size (Size.Internal.Prim.checkedMul x y)
+-- An `Overflow` is raised if the result is too large to fit in a `Size`.
+mulChecked :: HasCallStack => Size -> Size -> Size
+{-# INLINE mulChecked #-}
+mulChecked (Size x) (Size y) = Size (Size.Internal.Prim.mulChecked x y)
 
+-- | Multiplies two `Size`s.
+-- `Nothing` is returned if the result is too large to fit in a `Size`.
+mulSafe :: Size -> Size -> Maybe Size
+mulSafe (Size x) (Size y) = Size <$> Size.Internal.Prim.mulSafe x y

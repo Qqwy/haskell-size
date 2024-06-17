@@ -8,46 +8,59 @@ module Size.Internal.Prim where
 import Control.Exception qualified as Exception
 import GHC.Exts (addIntC#, subWordC#, timesInt2#, Int(I#), Word(W#))
 import GHC.Stack (HasCallStack)
+import Data.Maybe (fromMaybe)
 
 -- | Checked int addition.
 -- Not general-purpose; expects input ints to be nonnegative.
 -- (Will always raise an `Overflow`, even on `Underflow` 
 -- if two negative numbers are added)
-checkedAdd :: HasCallStack => Int -> Int -> Int
-{-# INLINE checkedAdd #-}
-checkedAdd !(I# x#) !(I# y#) =
+addChecked :: HasCallStack => Int -> Int -> Int
+{-# INLINE addChecked #-}
+addChecked x y = fromMaybe overflowError $ addSafe x y
+
+addSafe :: Int -> Int -> Maybe Int
+{-# INLINE addSafe #-}
+addSafe !(I# x#) !(I# y#) =
     case addIntC# x# y# of
-      (# r#, 0# #) -> I# r#
-      _ -> overflowError
+      (# r#, 0# #) -> Just (I# r#)
+      _ -> Nothing
 
 -- | Checked int subtraction.
 -- Not general-purpose; expects input ints to be nonnegative.
 -- (Will always raise an `Underflow`, even on `Overflow` 
 -- if two negative numbers are subtracted)
-checkedSub :: HasCallStack => Word -> Word -> Word
-{-# INLINE checkedSub #-}
-checkedSub !(W# x#) !(W# y#) =
+subChecked :: HasCallStack => Word -> Word -> Word
+{-# INLINE subChecked #-}
+subChecked x y = fromMaybe underflowError $ subSafe x y
+
+subSafe :: Word -> Word -> Maybe Word
+{-# INLINE subSafe #-}
+subSafe !(W# x#) !(W# y#) =
     case subWordC# x# y# of
-      (# r#, 0# #) -> W# r#
-      _ -> underflowError
+      (# r#, 0# #) -> Just (W# r#)
+      _ -> Nothing
 
 -- | Checked int multiplication.
 -- Not general-purpose; expects input ints to have same signs.
 -- (Will always raise an `Overflow`, even on `Underflow`
 -- if a negative and a positive number are multiplied)
-checkedMul :: HasCallStack => Int -> Int -> Int
-{-# INLINE checkedMul #-}
-checkedMul !(I# x#) !(I# y#) = 
-  case timesInt2# x# y# of
-    (# 0#, _, result #) -> I# result
-    _ -> overflowError
+mulChecked :: HasCallStack => Int -> Int -> Int
+{-# INLINE mulChecked #-}
+mulChecked x y = fromMaybe overflowError $ mulSafe x y
 
--- | Raise an `Exception.Underflow` `ArithException.
+mulSafe :: Int -> Int -> Maybe Int
+{-# INLINE mulSafe #-}
+mulSafe !(I# x#) !(I# y#) = 
+  case timesInt2# x# y# of
+    (# 0#, _, result #) -> Just (I# result)
+    _ -> Nothing
+
+-- | Raise an `Underflow`.
 underflowError :: HasCallStack => a
 {-# NOINLINE underflowError #-}
 underflowError = Exception.throw Underflow
 
--- | Raise an `Exception.Overflow` `ArithException.
+-- | Raise an `Overflow`.
 overflowError :: HasCallStack => a
 {-# NOINLINE overflowError #-}
 overflowError = Exception.throw Overflow

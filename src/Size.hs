@@ -39,9 +39,12 @@ module Size
   , fromNaturalSafe
   , fromNaturalChecked
   -- * Manually call checked math functions
-  , checkedAdd 
-  , checkedSub
-  , checkedMul
+  , addSafe
+  , addChecked 
+  , subSafe
+  , subChecked
+  , mulSafe
+  , mulChecked
   -- * Overflow/Underflow exception types
   , Size.Internal.Overflow
   , Size.Internal.Underflow
