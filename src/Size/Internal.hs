@@ -26,13 +26,13 @@ module Size.Internal
   , mulChecked
   , Size.Internal.Prim.Overflow
   , Size.Internal.Prim.Underflow
+  , Natural
   )
 where
 
 import Data.Function ((&))
-import GHC.Natural (Natural) -- TODO: public module?
-import GHC.Natural qualified as Natural
-import GHC.Stack (HasCallStack)
+import Numeric.Natural (Natural)
+import Numeric.Natural qualified as Natural
 import Data.Maybe (fromMaybe)
 import Text.Read qualified as Read
 import Control.Monad (guard)
@@ -40,6 +40,7 @@ import qualified Text.Printf
 import Data.Ix (Ix)
 import Data.Bits (Bits(..), FiniteBits(..))
 import qualified Data.Bits
+import GHC.Stack (HasCallStack)
 
 import Size.Internal.Prim qualified
 
