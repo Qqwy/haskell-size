@@ -13,6 +13,9 @@ module Size
   , checkedAdd 
   , checkedSub
   , checkedMul
+  -- * Overflow/Underflow exception types
+  , Size.Internal.Overflow
+  , Size.Internal.Underflow
   )
   where
 

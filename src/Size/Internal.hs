@@ -9,17 +9,20 @@ module Size.Internal
   , fromWord
   , safeFromInteger
   , toNatural
+  -- , toInteger
   , safeFromNatural
   , checkedAdd
   , checkedSub
   , checkedMul
+  , Size.Prim.Overflow
+  , Size.Prim.Underflow
   )
 where
 
 import Data.Function ((&))
 import GHC.Natural (Natural) -- TODO: public module?
 import GHC.Natural qualified as Natural
-import GHC.Enum qualified as Enum
+import GHC.Stack (HasCallStack)
 import Data.Maybe (fromMaybe)
 import Text.Read qualified as Read
 import Control.Monad (guard)
@@ -43,6 +46,12 @@ import Size.Prim qualified
 --
 -- In development and test environments (i.e. with optimizations disabled), overflow/underflow checking is done.
 -- When built with optimizations enabled, these checks are removed; in this environment, `Size` behaves just like a normal `Int`.
+-- To be precise:
+--
+-- - If the `+ignore-checked-math` library flag is set, overflow checks are always skipped.
+-- - If the `+force-checked-math` library flag is set, overflow checks are always active.
+-- - If no library flag is set, and the library is compiled without rewrite rules (such as using @-O0@), overflow checks are skipped.
+-- - If no library flag is set, and the library is compiled with rewrite rules active (such as using @-fenable-rewrite-rules@ or @-O1@ or @-O2@ which include it), overflow checks are active.
 newtype Size = 
     -- | Directly accessing the `Size` newtype constructor
     -- is considered unsafe, as it can be used to construct invalid (negative) `Size`s.
@@ -63,11 +72,9 @@ instance Read Size where
   readListPrec = Read.readListPrecDefault
 
 
--- | `Size` does _checked arithmetic_.
--- This means that any overflow/overflow that occurs during addition/subtraction/multiplication
--- is raised as an `Overflow :: ArithException` (resp. `Underflow :: ArithException`).
---
--- If the `+ignore-checked-math` flag is set, these checks are skipped.
+-- | `Size` does /checked arithmetic/.
+-- This means that any overflow resp. overflow that occurs during addition, subtraction or multiplication
+-- is raised as an `Exception.Overflow` (resp. `Exception.Underflow`) `Exception.ArithException`.
 instance Num Size where
     (+) = add
     (-) = sub
@@ -126,7 +133,9 @@ mul = checkedMul
 #-}
 #endif
 
--- | `Size` is nonnegative, so its `minBound` is 0. Its `maxBound` is the same as the maxBound of `Int`.
+-- | `Size` is nonnegative, so its `minBound` is 0. 
+-- Its `maxBound` is the same as the maxBound of `Int`.
+-- (usually 2^63 on 64-bit machines or 2^31 on 32-bit machines)
 instance Bounded Size where
     {-# INLINE minBound #-}
     minBound = 0
@@ -134,17 +143,19 @@ instance Bounded Size where
     {-# INLINE maxBound #-}
     maxBound = Size (maxBound @Int)
 
--- | Conversions to and from Int using the `Enum` class will always do bounds checking.
+-- | Conversions to and from `Int` using the `Enum` class will always do bounds checking.
+--
+-- On failure, an `Exception.Overflow` resp `Exception.Underflow` `Exception.ArithException` will be raised.
 instance Enum Size where
     {-# INLINE succ #-}
     succ x
       | x /= maxBound = x + 1
-      | otherwise = Enum.succError "Size"
+      | otherwise = Size.Prim.overflowError
 
     {-# INLINE pred #-}
     pred x
       | x /= minBound = x - 1
-      | otherwise = Enum.predError "Size"
+      | otherwise = Size.Prim.underflowError
 
     {-# INLINE fromEnum #-}
     fromEnum = toInt
@@ -155,7 +166,7 @@ instance Enum Size where
         & fromInt 
         & fromMaybe raiseErr
         where
-          raiseErr = (Enum.toEnumError "Size" x (0, maxBound @Size))
+          raiseErr = if x < 0 then Size.Prim.underflowError else Size.Prim.overflowError
 
 -- | Converts a `Size` to an `Int`.
 --
@@ -181,7 +192,7 @@ toWord (Size x) = fromIntegral x
 
 -- | Attempts to convert an `Int` to a `Size`.
 --
--- This will fail for `Word`s larger than `maxBound @Size` (usually 2^63 on 64-bit machines or 2^31 on 32-bit machines), 
+-- This will fail for `Word`s larger than 'maxBound @Size' (usually 2^63 on 64-bit machines or 2^31 on 32-bit machines), 
 -- in which case `Nothing` will be returned.
 fromWord :: Word -> Maybe Size
 {-# INLINE fromWord #-}
@@ -197,6 +208,9 @@ safeFromInteger x
   | x > (toInteger (maxBound @Int)) = Nothing
   | otherwise = Just (Size (fromInteger x))
 
+-- | Converts a `Size` into a `Natural`.
+--
+-- As the domain of `Natural` is larger than that of `Size`, this can never fail.
 toNatural :: Size -> Natural
 {-# INLINE toNatural #-}
 toNatural x = x & toWord & Natural.wordToNatural
@@ -210,17 +224,25 @@ safeFromNatural x
   | x > (fromIntegral (maxBound @Int)) = Nothing
   | otherwise = Just (Size (fromIntegral x))
 
-checkedAdd :: Size -> Size -> Size
+fromNatural :: HasCallStack => Natural -> Size
+fromNatural = fromMaybe Size.Prim.overflowError . safeFromNatural 
+
+-- | Adds two `Size`s, always checking for overflow (regardless of library or optimization flags).
+-- An `Exception.Overflow` is raised if the result is too large to fit in a `Size`.
+checkedAdd :: HasCallStack => Size -> Size -> Size
 {-# INLINE checkedAdd #-}
 checkedAdd (Size x) (Size y) = Size (Size.Prim.checkedAdd x y)
 
-checkedSub :: Size -> Size -> Size
+-- | Subtracts two `Size`s, always checking for underflow (regardless of library or optimization flags).
+-- An `Exception.Underflow` is raised if the result is negative.
+checkedSub :: HasCallStack => Size -> Size -> Size
 {-# INLINE checkedSub #-}
 checkedSub (Size x) (Size y) 
   = Size (fromIntegral (Size.Prim.checkedSub (fromIntegral x)  (fromIntegral y)))
-  -- | x < y = Size.Prim.underflowError
-  -- | otherwise = Size (x + y)
 
-checkedMul :: Size -> Size -> Size
+-- | Multiplies two `Size`s, always checking for overflow (regardless of library or optimization flags).
+-- An `Exception.Overflow` is raised if the result is too large to fit in a `Size`.
+checkedMul :: HasCallStack => Size -> Size -> Size
 {-# INLINE checkedMul #-}
 checkedMul (Size x) (Size y) = Size (Size.Prim.checkedMul x y)
+
