@@ -31,8 +31,8 @@ module Size.Internal
 where
 
 import Data.Function ((&))
-import Numeric.Natural (Natural)
-import Numeric.Natural qualified as Natural
+import GHC.Natural (Natural)
+import GHC.Natural qualified as Natural
 import Data.Maybe (fromMaybe)
 import Text.Read qualified as Read
 import Control.Monad (guard)

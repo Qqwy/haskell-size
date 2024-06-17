@@ -1,4 +1,4 @@
--- {-# OPTIONS_GHC -ddump-asm #-}
+{-# OPTIONS_GHC -ddump-simpl #-}
 module Main (main) where
 
 import Size
@@ -9,7 +9,5 @@ main = do
     y <- readLn :: IO Size
     -- let x = 10 :: Size
     -- let y = 20 :: Size
-    print (y - x)
-    print (x - y)
-
-
+    print (y + x)
+    print (x + y)
