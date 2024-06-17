@@ -1,20 +1,23 @@
 {-# LANGUAGE GHC2021 #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE CPP #-}
-
+{-# OPTIONS_HADDOCK not-home #-}
 -- | This module is to be considered internal,
 -- and therefore might change even in minor PVP versions.
 module Size.Internal
   (Size(Size)
   , toInt
-  , fromInt
+  , fromIntSafe
+  , fromIntChecked
   , toWord
-  , fromWord
-  , safeFromInteger
-  , fromNatural
+  , fromWordSafe
+  , fromWordChecked
+  , toInteger
+  , fromIntegerSafe
+  , fromIntegerChecked
   , toNatural
-  -- , toInteger
-  , safeFromNatural
+  , fromNaturalSafe
+  , fromNaturalChecked
   , checkedAdd
   , checkedSub
   , checkedMul
@@ -64,10 +67,10 @@ newtype Size =
     -- | Directly accessing the `Size` newtype constructor
     -- is considered unsafe, as it can be used to construct invalid (negative) `Size`s.
     Size Int
-  deriving newtype Show
+  deriving newtype Show -- ^ Just like any other integral number
   deriving newtype Eq
   deriving newtype Ord
-  -- `Size` is just like `Int` w.r.t. to `Integral`. Division can never trigger overflow/underflow.
+  -- ^`Size` is just like `Int` w.r.t. to `Integral`. Division can never trigger overflow/underflow.
   deriving newtype Integral
   deriving newtype Real
   deriving newtype Ix
@@ -102,7 +105,7 @@ instance Num Size where
     {-# INLINE fromInteger #-}
     fromInteger x =
         x
-        & safeFromInteger
+        & fromIntegerSafe
         & fromMaybe raiseErr
         where
           {-# NOINLINE raiseErr #-}
@@ -204,16 +207,8 @@ toEnumImpl :: Int -> Size
 #ifdef IGNORE_CHECKED_MATH
 toEnumImpl x = Size x
 #else
-toEnumImpl = checkedToEnum
+toEnumImpl = fromIntChecked
 #endif
-
-checkedToEnum :: Int -> Size
-checkedToEnum x = 
-  x 
-  & fromInt 
-  & fromMaybe raiseErr
-  where
-    raiseErr = if x < 0 then Size.Internal.Prim.underflowError else Size.Internal.Prim.overflowError
 
 #if !defined(FORCE_CHECKED_MATH)
 -- These rules will only trigger iff:
@@ -235,11 +230,26 @@ toInt (Size x) = x
 -- | Attempts to convert an `Int` to a `Size`.
 --
 -- This will fail for negative `Int`s, in which case `Nothing` will be returned.
-fromInt :: Int -> Maybe Size
-{-# INLINE fromInt #-}
-fromInt x
+--
+-- c.f. `fromIntChecked`.
+fromIntSafe :: Int -> Maybe Size
+{-# INLINE fromIntSafe #-}
+fromIntSafe x
   | x < 0 = Nothing 
   | otherwise = Just (Size x)
+
+-- | Attempts to convert an `Int` to a `Size`.
+--
+-- In case of failure (a negative `Int`), an `Underflow` exception will be raised.
+--
+-- c.f. `fromIntSafe`.
+fromIntChecked :: HasCallStack => Int -> Size
+fromIntChecked x =
+  x 
+  & fromIntSafe 
+  & fromMaybe raiseErr
+  where
+    raiseErr = Size.Internal.Prim.underflowError
 
 -- | Converts a `Size` to a `Word`.
 -- This will never fail, as the domain of `Size` is smaller than that of `Word`.
@@ -247,23 +257,52 @@ toWord :: Size -> Word
 {-# INLINE toWord #-}
 toWord (Size x) = fromIntegral x
 
--- | Attempts to convert an `Int` to a `Size`.
+-- | Attempts to convert a `Word` to a `Size`.
 --
 -- This will fail for `Word`s larger than 'maxBound @Size' (usually 2^63 on 64-bit machines or 2^31 on 32-bit machines), 
 -- in which case `Nothing` will be returned.
-fromWord :: Word -> Maybe Size
-{-# INLINE fromWord #-}
-fromWord = fromInt . fromIntegral
+--
+-- c.f. `fromWordChecked`.
+fromWordSafe :: Word -> Maybe Size
+{-# INLINE fromWordSafe #-}
+fromWordSafe = fromIntSafe . fromIntegral
+
+-- | Attempts to convert a `Word` to a `Size`.
+--
+-- In case of failure, an `Overflow` exception will be raised.
+--
+-- c.f. `fromWordSafe`.
+fromWordChecked :: HasCallStack => Word -> Size
+{-# INLINE fromWordChecked #-}
+fromWordChecked = fromMaybe Size.Internal.Prim.overflowError . fromWordSafe
 
 -- | Attempts to convert an `Integer` to a `Size`.
 --
 -- When negative or larger than `maxBound @Size`, `Nothing` will be returned.
-safeFromInteger :: Integer -> Maybe Size
-{-# INLINE safeFromInteger #-}
-safeFromInteger x
+fromIntegerSafe :: Integer -> Maybe Size
+{-# INLINE fromIntegerSafe #-}
+fromIntegerSafe x
   | x < 0 = Nothing
   | x > (toInteger (maxBound @Int)) = Nothing
   | otherwise = Just (Size (fromInteger x))
+
+-- | Attempts to convert an `Integer` to a `Size`.
+--
+-- In case of failure, an `Overflow` or `Underflow` exception will be raised.
+--
+-- c.f. `fromIntegerSafe`.
+fromIntegerChecked :: HasCallStack => Integer -> Size
+{-# INLINE fromIntegerChecked #-}
+fromIntegerChecked x =
+  x
+  & fromIntegerSafe
+  & fromMaybe raiseErr
+  where
+    {-# NOINLINE raiseErr #-}
+    raiseErr 
+      | x < 0 = Size.Internal.Prim.underflowError 
+      | otherwise = Size.Internal.Prim.overflowError
+
 
 -- | Converts a `Size` into a `Natural`.
 --
@@ -272,17 +311,24 @@ toNatural :: Size -> Natural
 {-# INLINE toNatural #-}
 toNatural x = x & toWord & Natural.wordToNatural
 
--- | Attempts to convert an `Integer` to a `Size`.
+-- | Attempts to convert a `Natural` to a `Size`.
 --
 -- When larger than `maxBound @Size`, `Nothing` will be returned.
-safeFromNatural :: Natural -> Maybe Size 
-{-# INLINE safeFromNatural #-}
-safeFromNatural x
+--
+-- c.f. `fromNaturalChecked`.
+fromNaturalSafe :: Natural -> Maybe Size 
+{-# INLINE fromNaturalSafe #-}
+fromNaturalSafe x
   | x > (fromIntegral (maxBound @Int)) = Nothing
   | otherwise = Just (Size (fromIntegral x))
 
-fromNatural :: HasCallStack => Natural -> Size
-fromNatural = fromMaybe Size.Internal.Prim.overflowError . safeFromNatural 
+-- | Attempts to convert a `Natural` to a `Size`.
+--
+-- In case of failure, an `Overflow` exception will be raised.
+--
+-- c.f. `fromNaturalSafe`.
+fromNaturalChecked :: HasCallStack => Natural -> Size
+fromNaturalChecked = fromMaybe Size.Internal.Prim.overflowError . fromNaturalSafe
 
 -- | Adds two `Size`s, always checking for overflow (regardless of library or optimization flags).
 -- An `Exception.Overflow` is raised if the result is too large to fit in a `Size`.
